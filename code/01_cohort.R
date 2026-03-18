@@ -674,4 +674,16 @@ summary_counts <- tibble(
 )
 
 print(summary_counts)
-write_csv(summary_counts, file.path(out_dir, "summary_counts.csv"))
+
+#write_csv(summary_counts, file.path(out_dir, "summary_counts.csv"))
+
+
+
+
+
+
+
+
+
+
+
