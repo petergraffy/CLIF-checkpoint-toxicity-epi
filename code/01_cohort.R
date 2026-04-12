@@ -36,11 +36,13 @@ suppressPackageStartupMessages({
   library(stringr)
 })
 
+source("utils/config.R")
+
 # -----------------------------
 # paths
 # -----------------------------
-clif_dir <- "C:\\Users\\Peter Graffy\\Box\\04-CLIF-2.1\\2.1.0"
-out_dir  <- "output/checkpoint_irae_icu"
+clif_dir <- get_config_value(config, "clif_dir", required = TRUE)
+out_dir  <- get_config_value(config, "output_dir", default = "output/checkpoint_irae_icu")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # -----------------------------
@@ -676,7 +678,6 @@ summary_counts <- tibble(
 print(summary_counts)
 
 #write_csv(summary_counts, file.path(out_dir, "summary_counts.csv"))
-
 
 
 

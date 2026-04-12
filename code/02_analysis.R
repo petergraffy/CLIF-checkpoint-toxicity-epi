@@ -14,6 +14,8 @@ suppressPackageStartupMessages({
   library(broom)
 })
 
+source("utils/config.R")
+
 `%ni%` <- Negate(`%in%`)
 
 safe_read_csv <- function(path) {
@@ -158,11 +160,11 @@ suppressPackageStartupMessages({
 # -----------------------------
 # paths
 # -----------------------------
-phenotype_dir <- "output/checkpoint_irae_icu"
-out_dir <- "output/checkpoint_irae_icu_epi"
+phenotype_dir <- get_config_value(config, "output_dir", default = "output/checkpoint_irae_icu")
+out_dir <- get_config_value(config, "analysis_dir", default = "output/checkpoint_irae_icu_epi")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-site_name <- "UCMC"
+site_name <- get_config_value(config, "site_name", default = "SITE")
 
 # -----------------------------
 # read phenotype outputs
@@ -182,6 +184,8 @@ analysis_dat <- irae %>%
     last_icu_out   = ymd_hms(last_icu_out, quiet = TRUE),
     admit_year = year(admission_dttm),
     icu_year   = year(first_icu_in),
+    icu_month = month(first_icu_in),
+    icu_year_month = format(first_icu_in, "%Y-%m"),
     age_band = make_age_band(age_at_admission),
     
     phenotype_tier = case_when(
@@ -245,11 +249,12 @@ analysis_dat <- irae %>%
     site_name,
     patient_id, hospitalization_id,
     admission_dttm, discharge_dttm, first_icu_in, last_icu_out,
-    admit_year, icu_year,
+    admit_year, icu_year, icu_month, icu_year_month,
     age_at_admission, age_band,
     admission_type_name, admission_type_category,
     discharge_name, discharge_category,
     discharge_name_clean, discharge_category_clean,
+    zipcode_five_digit, zipcode_nine_digit, census_tract, county_code, state_code,
     poa_cancer, cancer_codes_poa, cancer_type_broad,
     phenotype_tier, phenotype_any, phenotype_primary, phenotype_high,
     possible_checkpoint_irae_icu, probable_checkpoint_irae_icu,
@@ -762,7 +767,6 @@ if (nrow(yll_dat) > 0) {
   
   ggsave(file.path(out_dir, "yll_distribution.png"), p2, width = 7, height = 5, dpi = 300)
 }
-
 
 
 

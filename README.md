@@ -12,6 +12,8 @@ The primary goals are to:
 1. Identify a broad adult cancer ICU cohort.
 2. Characterize acute ICU syndromes consistent with severe irAE-like illness using biomarkers, vitals, organ support, and steroid/rescue treatment.
 3. Classify patients into possible, probable, and high-confidence checkpoint inhibitor–associated ICU phenotypes for downstream validation and epidemiologic study.
+4. Estimate whether the burden of suspected severe irAE ICU presentations is changing over time.
+5. Evaluate whether county-level air pollution burden is associated with suspected irAE ICU phenotypes and worse outcomes.
 
 ## Required CLIF tables and fields
 
@@ -97,6 +99,29 @@ Current exclusions are minimal:
 - no cancer diagnosis present on admission
 
 Future versions may add exclusions for alternative ICU syndromes that would strongly compete with an irAE-like interpretation, such as trauma, perioperative admissions, or clearly noninflammatory critical illness phenotypes.
+
+## Epidemiology aims
+
+### Aim 1. Burden and severity over time
+
+- Estimate annual rates of possible, probable, and high-confidence irAE-like ICU admissions among all cancer ICU admissions.
+- Compare severity and outcomes for suspected irAE cases versus other cancer ICU admissions using:
+  - hospital mortality
+  - ICU and hospital length of stay
+  - invasive mechanical ventilation
+  - vasopressors
+  - CRRT
+  - discharge to hospice or facility
+
+### Aim 2. Air pollution and social context
+
+- Link CLIF hospitalization geography (`county_code`, `zipcode_five_digit`, or `census_tract` when available) to county-level PM2.5, NO2, SVI, and ACS covariates.
+- Examine whether higher chronic pollution burden is associated with:
+  - the suspected irAE phenotype among cancer ICU admissions
+  - more severe organ support needs
+  - mortality or prolonged ICU stay among suspected irAE cases
+
+Because CLIF v2.1 includes encounter geography in `hospitalization`, this linkage can be done without storing full address data in the repo.
 
 ## TL;DR phenotype definitions
 

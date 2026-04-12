@@ -1,5 +1,15 @@
 {
-    "site_name": "Your_Site_Name",
-    "tables_path": "/path/to/tables/",
-    "file_type": "csv/parquet/fst"
+  "site_name": "Your_Site_Name",
+  "clif_dir": "/absolute/path/to/clif_2.1_tables",
+  "output_dir": "output/checkpoint_irae_icu",
+  "analysis_dir": "output/checkpoint_irae_icu_epi",
+  "site_timezone": "America/Chicago",
+  "file_type": "parquet",
+  "exposome_dir": "exposome",
+  "pm25_year_file": "exposome/pm25_county_year.csv",
+  "pm25_month_file": "exposome/pm25_county_month.csv",
+  "no2_year_file": "exposome/no2_county_year.csv",
+  "no2_month_file": "exposome/no2_county_month.csv",
+  "svi_file": "exposome/svi_county_year.csv",
+  "acs_file": "exposome/acs_estimates.csv.zip"
 }
