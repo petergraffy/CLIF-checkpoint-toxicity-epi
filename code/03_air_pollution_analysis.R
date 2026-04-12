@@ -323,6 +323,33 @@ if (nrow(pm25_model_dat) >= 50 && sum(pm25_model_dat$hospital_mortality, na.rm =
     )
 }
 
+pm25_baseline_yll_yearly <- probable_dat %>%
+  filter(!is.na(pm25_annual)) %>%
+  group_by(icu_year) %>%
+  summarise(
+    n_probable_cases = n(),
+    baseline_yll = n_probable_cases * (pm25_yll_quartiles$baseline_yll_per_case_q1[1]),
+    observed_yll = sum(if_else(hospital_mortality == 1, yll_if_death, 0), na.rm = TRUE),
+    .groups = "drop"
+  )
+
+if (nrow(pm25_attributable_yll_yearly) > 0) {
+  pm25_yll_yearly_plot_dat <- pm25_baseline_yll_yearly %>%
+    left_join(pm25_attributable_yll_yearly, by = "icu_year") %>%
+    mutate(
+      attributable_excess_yll = replace_na(attributable_excess_yll, 0),
+      attributable_excess_yll_per_case = replace_na(attributable_excess_yll_per_case, 0),
+      total_yll_with_excess = baseline_yll + attributable_excess_yll
+    )
+} else {
+  pm25_yll_yearly_plot_dat <- pm25_baseline_yll_yearly %>%
+    mutate(
+      attributable_excess_yll = 0,
+      attributable_excess_yll_per_case = 0,
+      total_yll_with_excess = baseline_yll
+    )
+}
+
 yearly_burden <- analysis_exposome %>%
   group_by(icu_year) %>%
   summarise(
@@ -579,19 +606,35 @@ p_pm25_excess_yll_quartile <- pm25_yll_quartiles %>%
   ) +
   theme_grant()
 
-if (nrow(pm25_attributable_yll_yearly) > 0) {
-  p_pm25_attr_yll_yearly <- pm25_attributable_yll_yearly %>%
-    ggplot(aes(x = icu_year, y = attributable_excess_yll)) +
-    geom_col(fill = "#AE2012", width = 0.7) +
-    scale_x_continuous(breaks = pm25_attributable_yll_yearly$icu_year) +
-    labs(
-      title = "Estimated PM2.5-attributable excess YLL by year",
-      subtitle = paste0("Counterfactual PM2.5 set to the Q1 median (", round(pm25_reference, 2), ") among probable irAE cases"),
-      x = "ICU year",
-      y = "Attributable excess YLL"
-    ) +
-    theme_grant()
-}
+p_pm25_yll_yearly <- pm25_yll_yearly_plot_dat %>%
+  ggplot(aes(x = icu_year)) +
+  geom_line(aes(y = baseline_yll), color = "#005F73", linewidth = 1.2) +
+  geom_point(aes(y = baseline_yll), color = "#005F73", size = 2.2) +
+  geom_segment(
+    aes(
+      xend = icu_year,
+      y = baseline_yll,
+      yend = baseline_yll + attributable_excess_yll
+    ),
+    color = "#AE2012",
+    linewidth = 1.1
+  ) +
+  geom_point(
+    aes(y = baseline_yll + attributable_excess_yll),
+    color = "#AE2012",
+    size = 2.8
+  ) +
+  scale_x_continuous(breaks = pm25_yll_yearly_plot_dat$icu_year) +
+  labs(
+    title = "Annual baseline and excess YLL associated with PM2.5",
+    subtitle = paste0(
+      "Blue line: baseline YLL at the Q1 PM2.5 rate; red lollipops: estimated PM2.5-attributable excess YLL",
+      if (exists("pm25_reference") && is.finite(pm25_reference)) paste0(" (Q1 median reference = ", round(pm25_reference, 2), ")") else ""
+    ),
+    x = "ICU year",
+    y = "Years of life lost"
+  ) +
+  theme_grant()
 
 write_csv(analysis_exposome, file.path(out_dir, "analysis_exposome_linked.csv"))
 write_csv(linkage_qc, file.path(out_dir, "linkage_qc.csv"))
@@ -608,6 +651,8 @@ if (nrow(pm25_attributable_yll_patient) > 0) {
   write_csv(pm25_attributable_yll_yearly, file.path(out_dir, "pm25_attributable_yll_yearly.csv"))
   write_csv(pm25_attributable_yll_summary, file.path(out_dir, "pm25_attributable_yll_summary.csv"))
 }
+write_csv(pm25_baseline_yll_yearly, file.path(out_dir, "pm25_baseline_yll_yearly.csv"))
+write_csv(pm25_yll_yearly_plot_dat, file.path(out_dir, "pm25_yll_yearly_plot_data.csv"))
 
 ggsave(file.path(fig_dir, "figure1_annual_probable_rate.png"), p_yearly, width = 8, height = 5, dpi = 300)
 ggsave(file.path(fig_dir, "figure1_annual_probable_rate.pdf"), p_yearly, width = 8, height = 5)
@@ -629,10 +674,8 @@ if (exists("p_forest")) {
   ggsave(file.path(fig_dir, "figure4_air_pollution_forest.pdf"), p_forest, width = 8.5, height = 4.8)
 }
 
-if (exists("p_pm25_attr_yll_yearly")) {
-  ggsave(file.path(fig_dir, "figure7_pm25_attributable_excess_yll_yearly.png"), p_pm25_attr_yll_yearly, width = 8.5, height = 5.5, dpi = 300)
-  ggsave(file.path(fig_dir, "figure7_pm25_attributable_excess_yll_yearly.pdf"), p_pm25_attr_yll_yearly, width = 8.5, height = 5.5)
-}
+ggsave(file.path(fig_dir, "figure7_pm25_baseline_and_excess_yll_yearly.png"), p_pm25_yll_yearly, width = 9, height = 5.5, dpi = 300)
+ggsave(file.path(fig_dir, "figure7_pm25_baseline_and_excess_yll_yearly.pdf"), p_pm25_yll_yearly, width = 9, height = 5.5)
 
 print(linkage_qc)
 print(model_results)
