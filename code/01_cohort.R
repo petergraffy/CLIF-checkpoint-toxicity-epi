@@ -36,13 +36,46 @@ suppressPackageStartupMessages({
   library(stringr)
 })
 
-source("utils/config.R")
+find_first_existing <- function(paths) {
+  existing <- paths[file.exists(paths)]
+  if (length(existing) == 0) {
+    return(NA_character_)
+  }
+  normalizePath(existing[[1]], winslash = "/", mustWork = TRUE)
+}
+
+config_script_path <- find_first_existing(c(
+  "utils/config.R",
+  "../utils/config.R"
+))
+
+if (is.na(config_script_path)) {
+  stop("Could not find utils/config.R from the current working directory.")
+}
+
+source(config_script_path)
+
+config_path <- find_first_existing(c(
+  "config/config.json",
+  "../config/config.json"
+))
+
+if (is.na(config_path)) {
+  stop("Could not find config/config.json from the current working directory.")
+}
+
+project_root <- dirname(dirname(config_path))
+config <- load_config(config_path, required = TRUE)
 
 # -----------------------------
 # paths
 # -----------------------------
 clif_dir <- get_config_value(config, "clif_dir", required = TRUE)
-out_dir  <- get_config_value(config, "output_dir", default = "output/checkpoint_irae_icu")
+out_dir  <- get_config_value(
+  config,
+  "output_dir",
+  default = file.path(project_root, "output", "checkpoint_irae_icu")
+)
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # -----------------------------
@@ -678,7 +711,6 @@ summary_counts <- tibble(
 print(summary_counts)
 
 #write_csv(summary_counts, file.path(out_dir, "summary_counts.csv"))
-
 
 
 

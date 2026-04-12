@@ -14,6 +14,9 @@ load_config <- function(json_path = "config/config.json", required = TRUE) {
   }
   
   config <- jsonlite::fromJSON(json_path, simplifyVector = TRUE)
+  if (is.null(config$clif_dir) && !is.null(config$tables_path)) {
+    config$clif_dir <- config$tables_path
+  }
   message("Loaded configuration from ", json_path)
   config
 }
