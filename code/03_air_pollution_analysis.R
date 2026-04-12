@@ -36,14 +36,6 @@ safe_read_delim <- function(path) {
   readr::read_csv(path, show_col_types = FALSE)
 }
 
-clean_names_simple <- function(df) {
-  names(df) <- names(df) %>%
-    str_to_lower() %>%
-    str_replace_all("[^a-z0-9]+", "_") %>%
-    str_replace_all("^_|_$", "")
-  df
-}
-
 analysis_path <- file.path(analysis_dir, "analysis_dataset.csv")
 if (!file.exists(analysis_path)) {
   stop(
@@ -65,40 +57,38 @@ dat <- safe_read_delim(analysis_path) %>%
     any_major_support = as.integer(any_major_support)
   )
 
-pm25_year <- safe_read_delim(get_config_value(config, "pm25_year_file", default = file.path(exposome_dir, "pm25_county_year.csv"))) %>%
-  clean_names_simple()
+pm25_link <- safe_read_delim(
+  get_config_value(config, "pm25_year_file", default = file.path(exposome_dir, "pm25_county_year.csv"))
+) %>%
+  transmute(
+    county_code = pad_fips(GEOID),
+    icu_year = as.integer(year),
+    pm25_annual = as.numeric(pm25_mean),
+    pm25_filled_2024 = as.logical(pm25_filled_2024)
+  )
 
-no2_year <- safe_read_delim(get_config_value(config, "no2_year_file", default = file.path(exposome_dir, "no2_county_year.csv"))) %>%
-  clean_names_simple()
+no2_link <- safe_read_delim(
+  get_config_value(config, "no2_year_file", default = file.path(exposome_dir, "no2_county_year.csv"))
+) %>%
+  transmute(
+    county_code = pad_fips(GEOID),
+    icu_year = as.integer(year),
+    no2_annual = as.numeric(no2_mean)
+  )
 
-svi_year <- safe_read_delim(get_config_value(config, "svi_file", default = file.path(exposome_dir, "svi_county_year.csv"))) %>%
-  clean_names_simple()
-
-standardize_county_year <- function(df, value_name) {
-  county_col <- names(df)[str_detect(names(df), "county.*fips|fips|county_code")][1]
-  year_col <- names(df)[str_detect(names(df), "^year$|calendar_year|observation_year")][1]
-  value_col <- names(df)[str_detect(names(df), value_name)][1]
-  
-  if (any(is.na(c(county_col, year_col, value_col)))) {
-    stop("Could not identify county/year/value columns for ", value_name)
-  }
-  
-  df %>%
-    transmute(
-      county_code = pad_fips(.data[[county_col]]),
-      icu_year = as.integer(.data[[year_col]]),
-      value = as.numeric(.data[[value_col]])
-    )
-}
-
-pm25_link <- standardize_county_year(pm25_year, "pm25") %>%
-  rename(pm25_annual = value)
-
-no2_link <- standardize_county_year(no2_year, "no2") %>%
-  rename(no2_annual = value)
-
-svi_link <- standardize_county_year(svi_year, "svi|rpl") %>%
-  rename(svi_overall = value)
+svi_link <- safe_read_delim(
+  get_config_value(config, "svi_file", default = file.path(exposome_dir, "svi_county_year.csv"))
+) %>%
+  transmute(
+    county_code = pad_fips(GEOID),
+    icu_year = as.integer(year),
+    svi_year_release = as.integer(year_release),
+    svi_overall = as.numeric(svi_overall),
+    svi_theme1 = as.numeric(svi_theme1),
+    svi_theme2 = as.numeric(svi_theme2),
+    svi_theme3 = as.numeric(svi_theme3),
+    svi_theme4 = as.numeric(svi_theme4)
+  )
 
 analysis_exposome <- dat %>%
   left_join(pm25_link, by = c("county_code", "icu_year")) %>%
@@ -119,7 +109,8 @@ linkage_qc <- analysis_exposome %>%
     n_county_missing = sum(is.na(county_code) | county_code == ""),
     n_pm25_linked = sum(!is.na(pm25_annual)),
     n_no2_linked = sum(!is.na(no2_annual)),
-    n_svi_linked = sum(!is.na(svi_overall))
+    n_svi_linked = sum(!is.na(svi_overall)),
+    n_pm25_filled_2024 = sum(pm25_filled_2024 %in% TRUE, na.rm = TRUE)
   )
 
 yearly_exposure_summary <- analysis_exposome %>%
@@ -131,6 +122,7 @@ yearly_exposure_summary <- analysis_exposome %>%
     pm25_mean = mean(pm25_annual, na.rm = TRUE),
     no2_mean = mean(no2_annual, na.rm = TRUE),
     svi_mean = mean(svi_overall, na.rm = TRUE),
+    svi_theme3_mean = mean(svi_theme3, na.rm = TRUE),
     .groups = "drop"
   )
 

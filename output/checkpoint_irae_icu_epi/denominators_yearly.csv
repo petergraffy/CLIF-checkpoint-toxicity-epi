@@ -1,0 +1,10 @@
+site_name,icu_year,denominator_name,n
+UCMC,2018,cancer_icu_broad,841
+UCMC,2019,cancer_icu_broad,856
+UCMC,2020,cancer_icu_broad,752
+UCMC,2021,cancer_icu_broad,778
+UCMC,2022,cancer_icu_broad,721
+UCMC,2023,cancer_icu_broad,830
+UCMC,2024,cancer_icu_broad,909
+UCMC,2025,cancer_icu_broad,7
+UCMC,NA,cancer_icu_broad,6
