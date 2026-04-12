@@ -139,6 +139,28 @@ rate_ci <- function(events, n) {
   )
 }
 
+remaining_life_expectancy <- function(age) {
+  case_when(
+    is.na(age) ~ NA_real_,
+    age < 20 ~ 60.0,
+    age < 25 ~ 55.5,
+    age < 30 ~ 50.8,
+    age < 35 ~ 46.1,
+    age < 40 ~ 41.5,
+    age < 45 ~ 36.9,
+    age < 50 ~ 32.4,
+    age < 55 ~ 28.1,
+    age < 60 ~ 23.9,
+    age < 65 ~ 20.0,
+    age < 70 ~ 16.4,
+    age < 75 ~ 13.1,
+    age < 80 ~ 10.2,
+    age < 85 ~ 7.8,
+    age < 90 ~ 5.9,
+    TRUE ~ 4.4
+  )
+}
+
 fit_if_possible <- function(formula_obj, data, outcome, exposure) {
   model_dat <- data %>%
     select(all.vars(formula_obj)) %>%
@@ -193,6 +215,98 @@ model_results <- bind_rows(
   )
 ) %>%
   filter(term %in% c("pm25_annual", "no2_annual"))
+
+probable_dat <- analysis_exposome %>%
+  filter(phenotype_primary == 1) %>%
+  mutate(
+    row_id = row_number(),
+    remaining_life_exp = remaining_life_expectancy(age_at_admission),
+    yll_if_death = remaining_life_exp
+  )
+
+probable_yll_decedents <- probable_dat %>%
+  filter(hospital_mortality == 1)
+
+pm25_reference <- probable_dat %>%
+  filter(!is.na(pm25_annual)) %>%
+  summarise(ref = median(pm25_annual[pm25_q == "Q1 lowest"], na.rm = TRUE)) %>%
+  pull(ref)
+
+if (length(pm25_reference) == 0 || is.na(pm25_reference) || !is.finite(pm25_reference)) {
+  pm25_reference <- probable_dat %>%
+    summarise(ref = quantile(pm25_annual, probs = 0.25, na.rm = TRUE)) %>%
+    pull(ref)
+}
+
+pm25_yll_quartiles <- probable_dat %>%
+  filter(!is.na(pm25_q)) %>%
+  group_by(pm25_q) %>%
+  summarise(
+    n_probable_cases = n(),
+    n_deaths = sum(hospital_mortality, na.rm = TRUE),
+    total_yll_observed = sum(if_else(hospital_mortality == 1, yll_if_death, 0), na.rm = TRUE),
+    mean_yll_per_case = total_yll_observed / n_probable_cases,
+    mean_yll_per_death = if_else(n_deaths > 0, total_yll_observed / n_deaths, NA_real_),
+    .groups = "drop"
+  ) %>%
+  arrange(pm25_q) %>%
+  mutate(
+    baseline_yll_per_case_q1 = mean_yll_per_case[pm25_q == "Q1 lowest"][1],
+    excess_yll_per_case_vs_q1 = mean_yll_per_case - baseline_yll_per_case_q1,
+    excess_total_yll_vs_q1 = excess_yll_per_case_vs_q1 * n_probable_cases
+  )
+
+pm25_mortality_probable_model <- NULL
+pm25_attributable_yll_patient <- tibble()
+pm25_attributable_yll_yearly <- tibble()
+pm25_attributable_yll_summary <- tibble()
+
+pm25_model_dat <- probable_dat %>%
+  select(row_id, hospital_mortality, pm25_annual, age_at_admission, admit_year, svi_overall, yll_if_death) %>%
+  drop_na()
+
+if (nrow(pm25_model_dat) >= 50 && sum(pm25_model_dat$hospital_mortality, na.rm = TRUE) >= 10) {
+  pm25_mortality_probable_model <- glm(
+    hospital_mortality ~ pm25_annual + age_at_admission + factor(admit_year) + svi_overall,
+    data = pm25_model_dat,
+    family = binomial()
+  )
+  
+  observed_prob <- predict(pm25_mortality_probable_model, newdata = pm25_model_dat, type = "response")
+  counterfactual_dat <- pm25_model_dat %>%
+    mutate(pm25_annual = pm25_reference)
+  counterfactual_prob <- predict(pm25_mortality_probable_model, newdata = counterfactual_dat, type = "response")
+  
+  pm25_attributable_yll_patient <- probable_dat %>%
+    select(row_id, hospitalization_id, icu_year, pm25_q) %>%
+    inner_join(
+      pm25_model_dat %>%
+        mutate(
+          predicted_mortality_observed = observed_prob,
+          predicted_mortality_reference = counterfactual_prob,
+          attributable_excess_death_prob = pmax(0, predicted_mortality_observed - predicted_mortality_reference),
+          attributable_excess_yll = attributable_excess_death_prob * yll_if_death
+        ),
+      by = "row_id"
+    )
+  
+  pm25_attributable_yll_yearly <- pm25_attributable_yll_patient %>%
+    group_by(icu_year) %>%
+    summarise(
+      attributable_excess_yll = sum(attributable_excess_yll, na.rm = TRUE),
+      attributable_excess_yll_per_case = mean(attributable_excess_yll, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  pm25_attributable_yll_summary <- pm25_attributable_yll_patient %>%
+    summarise(
+      pm25_reference = pm25_reference,
+      n_probable_cases_modeled = n(),
+      total_attributable_excess_yll = sum(attributable_excess_yll, na.rm = TRUE),
+      mean_attributable_excess_yll_per_case = mean(attributable_excess_yll, na.rm = TRUE),
+      median_attributable_excess_yll_per_case = median(attributable_excess_yll, na.rm = TRUE)
+    )
+}
 
 yearly_burden <- analysis_exposome %>%
   group_by(icu_year) %>%
@@ -407,6 +521,45 @@ if (nrow(forest_dat) > 0) {
     theme_grant()
 }
 
+p_pm25_yll_quartile <- pm25_yll_quartiles %>%
+  ggplot(aes(x = pm25_q, y = total_yll_observed, fill = pm25_q)) +
+  geom_col(width = 0.7, show.legend = FALSE) +
+  scale_fill_manual(values = c("Q1 lowest" = "#94D2BD", "Q2" = "#E9D8A6", "Q3" = "#EE9B00", "Q4 highest" = "#BB3E03")) +
+  labs(
+    title = "Observed years of life lost by annual PM2.5 quartile",
+    subtitle = "Among probable irAE-like ICU cases with hospital mortality",
+    x = "PM2.5 quartile",
+    y = "Observed total YLL"
+  ) +
+  theme_grant()
+
+p_pm25_excess_yll_quartile <- pm25_yll_quartiles %>%
+  filter(pm25_q != "Q1 lowest") %>%
+  ggplot(aes(x = pm25_q, y = excess_total_yll_vs_q1, fill = pm25_q)) +
+  geom_col(width = 0.7, show.legend = FALSE) +
+  scale_fill_manual(values = c("Q2" = "#E9D8A6", "Q3" = "#EE9B00", "Q4 highest" = "#BB3E03")) +
+  labs(
+    title = "Excess observed YLL versus lowest PM2.5 quartile",
+    subtitle = "Difference in YLL per probable case relative to Q1, scaled by quartile case counts",
+    x = "PM2.5 quartile",
+    y = "Excess YLL vs Q1"
+  ) +
+  theme_grant()
+
+if (nrow(pm25_attributable_yll_yearly) > 0) {
+  p_pm25_attr_yll_yearly <- pm25_attributable_yll_yearly %>%
+    ggplot(aes(x = icu_year, y = attributable_excess_yll)) +
+    geom_col(fill = "#AE2012", width = 0.7) +
+    scale_x_continuous(breaks = pm25_attributable_yll_yearly$icu_year) +
+    labs(
+      title = "Estimated PM2.5-attributable excess YLL by year",
+      subtitle = paste0("Counterfactual PM2.5 set to the Q1 median (", round(pm25_reference, 2), ") among probable irAE cases"),
+      x = "ICU year",
+      y = "Attributable excess YLL"
+    ) +
+    theme_grant()
+}
+
 write_csv(analysis_exposome, file.path(out_dir, "analysis_exposome_linked.csv"))
 write_csv(linkage_qc, file.path(out_dir, "linkage_qc.csv"))
 write_csv(yearly_exposure_summary, file.path(out_dir, "yearly_exposure_summary.csv"))
@@ -414,6 +567,13 @@ write_csv(model_results, file.path(out_dir, "air_pollution_models.csv"))
 write_csv(yearly_burden, file.path(out_dir, "yearly_burden_probable.csv"))
 write_csv(quartile_phenotype, file.path(out_dir, "quartile_phenotype_rates.csv"))
 write_csv(quartile_mortality_probable, file.path(out_dir, "quartile_mortality_probable.csv"))
+write_csv(pm25_yll_quartiles, file.path(out_dir, "pm25_yll_quartiles_probable.csv"))
+
+if (nrow(pm25_attributable_yll_patient) > 0) {
+  write_csv(pm25_attributable_yll_patient, file.path(out_dir, "pm25_attributable_yll_patient_level.csv"))
+  write_csv(pm25_attributable_yll_yearly, file.path(out_dir, "pm25_attributable_yll_yearly.csv"))
+  write_csv(pm25_attributable_yll_summary, file.path(out_dir, "pm25_attributable_yll_summary.csv"))
+}
 
 ggsave(file.path(fig_dir, "figure1_annual_probable_rate.png"), p_yearly, width = 8, height = 5, dpi = 300)
 ggsave(file.path(fig_dir, "figure1_annual_probable_rate.pdf"), p_yearly, width = 8, height = 5)
@@ -423,11 +583,21 @@ ggsave(file.path(fig_dir, "figure2_pollution_quartile_probable_rate.png"), p_qua
 ggsave(file.path(fig_dir, "figure2_pollution_quartile_probable_rate.pdf"), p_quartile_phenotype, width = 8.5, height = 5.5)
 ggsave(file.path(fig_dir, "figure3_pollution_quartile_mortality_probable.png"), p_quartile_mortality, width = 8.5, height = 5.5, dpi = 300)
 ggsave(file.path(fig_dir, "figure3_pollution_quartile_mortality_probable.pdf"), p_quartile_mortality, width = 8.5, height = 5.5)
+ggsave(file.path(fig_dir, "figure5_pm25_observed_yll_quartiles.png"), p_pm25_yll_quartile, width = 8.5, height = 5.5, dpi = 300)
+ggsave(file.path(fig_dir, "figure5_pm25_observed_yll_quartiles.pdf"), p_pm25_yll_quartile, width = 8.5, height = 5.5)
+ggsave(file.path(fig_dir, "figure6_pm25_excess_yll_vs_q1.png"), p_pm25_excess_yll_quartile, width = 8.5, height = 5.5, dpi = 300)
+ggsave(file.path(fig_dir, "figure6_pm25_excess_yll_vs_q1.pdf"), p_pm25_excess_yll_quartile, width = 8.5, height = 5.5)
 
 if (exists("p_forest")) {
   ggsave(file.path(fig_dir, "figure4_air_pollution_forest.png"), p_forest, width = 8.5, height = 4.8, dpi = 300)
   ggsave(file.path(fig_dir, "figure4_air_pollution_forest.pdf"), p_forest, width = 8.5, height = 4.8)
 }
 
+if (exists("p_pm25_attr_yll_yearly")) {
+  ggsave(file.path(fig_dir, "figure7_pm25_attributable_excess_yll_yearly.png"), p_pm25_attr_yll_yearly, width = 8.5, height = 5.5, dpi = 300)
+  ggsave(file.path(fig_dir, "figure7_pm25_attributable_excess_yll_yearly.pdf"), p_pm25_attr_yll_yearly, width = 8.5, height = 5.5)
+}
+
 print(linkage_qc)
 print(model_results)
+if (nrow(pm25_attributable_yll_summary) > 0) print(pm25_attributable_yll_summary)
