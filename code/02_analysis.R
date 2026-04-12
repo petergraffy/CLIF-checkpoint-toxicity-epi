@@ -301,9 +301,9 @@ denominators_yearly <- analysis_dat %>%
 # -----------------------------
 # save
 # -----------------------------
-#write_csv(analysis_dat, file.path(out_dir, "analysis_dataset.csv"))
-#write_csv(denominators_overall, file.path(out_dir, "denominators_overall.csv"))
-#write_csv(denominators_yearly, file.path(out_dir, "denominators_yearly.csv"))
+write_csv(analysis_dat, file.path(out_dir, "analysis_dataset.csv"))
+write_csv(denominators_overall, file.path(out_dir, "denominators_overall.csv"))
+write_csv(denominators_yearly, file.path(out_dir, "denominators_yearly.csv"))
 
 # -----------------------------
 # quick QC
@@ -319,7 +319,7 @@ qc_summary <- tibble(
 )
 
 print(qc_summary)
-#write_csv(qc_summary, file.path(out_dir, "qc_summary.csv"))
+write_csv(qc_summary, file.path(out_dir, "qc_summary.csv"))
 
 # ============================================================
 # 02_burden_analysis.R
@@ -767,7 +767,6 @@ if (nrow(yll_dat) > 0) {
   
   ggsave(file.path(out_dir, "yll_distribution.png"), p2, width = 7, height = 5, dpi = 300)
 }
-
 
 
 
