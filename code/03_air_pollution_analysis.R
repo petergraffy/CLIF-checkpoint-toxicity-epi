@@ -19,6 +19,7 @@ analysis_dir <- get_config_value(config, "analysis_dir", default = "output/check
 exposome_dir <- get_config_value(config, "exposome_dir", default = "exposome")
 out_dir <- file.path(analysis_dir, "air_pollution")
 fig_dir <- file.path(out_dir, "figures")
+analysis_max_year <- 2024
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -55,7 +56,8 @@ dat <- safe_read_delim(analysis_path) %>%
     hospital_mortality = as.integer(hospital_mortality),
     prolonged_icu_los = as.integer(prolonged_icu_los),
     any_major_support = as.integer(any_major_support)
-  )
+  ) %>%
+  filter(!is.na(icu_year), icu_year <= analysis_max_year)
 
 pm25_link <- safe_read_delim(
   get_config_value(config, "pm25_year_file", default = file.path(exposome_dir, "pm25_county_year.csv"))
@@ -65,7 +67,8 @@ pm25_link <- safe_read_delim(
     icu_year = as.integer(year),
     pm25_annual = as.numeric(pm25_mean),
     pm25_filled_2024 = as.logical(pm25_filled_2024)
-  )
+  ) %>%
+  filter(icu_year <= analysis_max_year)
 
 no2_link <- safe_read_delim(
   get_config_value(config, "no2_year_file", default = file.path(exposome_dir, "no2_county_year.csv"))
@@ -74,7 +77,8 @@ no2_link <- safe_read_delim(
     county_code = pad_fips(GEOID),
     icu_year = as.integer(year),
     no2_annual = as.numeric(no2_mean)
-  )
+  ) %>%
+  filter(icu_year <= analysis_max_year)
 
 svi_link <- safe_read_delim(
   get_config_value(config, "svi_file", default = file.path(exposome_dir, "svi_county_year.csv"))
@@ -88,7 +92,8 @@ svi_link <- safe_read_delim(
     svi_theme2 = as.numeric(svi_theme2),
     svi_theme3 = as.numeric(svi_theme3),
     svi_theme4 = as.numeric(svi_theme4)
-  )
+  ) %>%
+  filter(icu_year <= analysis_max_year)
 
 analysis_exposome <- dat %>%
   left_join(pm25_link, by = c("county_code", "icu_year")) %>%
@@ -202,6 +207,30 @@ yearly_burden <- analysis_exposome %>%
     .groups = "drop"
   )
 
+line_scale_factor <- with(
+  yearly_burden,
+  if (all(is.na(rate)) || all(is.na(n)) || max(rate, na.rm = TRUE) <= 0) {
+    1
+  } else {
+    max(n, na.rm = TRUE) / max(rate, na.rm = TRUE)
+  }
+)
+
+trend_lines <- bind_rows(
+  yearly_burden %>%
+    transmute(
+      icu_year,
+      series = "Probable irAE burden",
+      value = rate
+    ),
+  yearly_burden %>%
+    transmute(
+      icu_year,
+      series = "Cancer ICU volume",
+      value = n / line_scale_factor
+    )
+)
+
 quartile_phenotype <- bind_rows(
   analysis_exposome %>%
     filter(!is.na(pm25_q)) %>%
@@ -297,6 +326,33 @@ p_yearly <- yearly_burden %>%
   ) +
   theme_grant()
 
+p_trend_dual <- trend_lines %>%
+  ggplot(aes(x = icu_year, y = value, color = series)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.3) +
+  scale_color_manual(
+    values = c(
+      "Probable irAE burden" = "#AE2012",
+      "Cancer ICU volume" = "#005F73"
+    )
+  ) +
+  scale_y_continuous(
+    name = "Probable irAE burden",
+    labels = label_percent(accuracy = 0.1),
+    sec.axis = sec_axis(
+      ~ . * line_scale_factor,
+      name = "Cancer ICU admissions"
+    )
+  ) +
+  scale_x_continuous(breaks = yearly_burden$icu_year) +
+  labs(
+    title = "Probable irAE burden versus total cancer ICU volume",
+    subtitle = "Annual trends limited to ICU admissions through 2024",
+    x = "ICU year",
+    color = NULL
+  ) +
+  theme_grant()
+
 p_quartile_phenotype <- quartile_phenotype %>%
   ggplot(aes(x = exposure_group, y = rate, fill = pollutant)) +
   geom_col(position = position_dodge(width = 0.7), width = 0.62) +
@@ -361,6 +417,8 @@ write_csv(quartile_mortality_probable, file.path(out_dir, "quartile_mortality_pr
 
 ggsave(file.path(fig_dir, "figure1_annual_probable_rate.png"), p_yearly, width = 8, height = 5, dpi = 300)
 ggsave(file.path(fig_dir, "figure1_annual_probable_rate.pdf"), p_yearly, width = 8, height = 5)
+ggsave(file.path(fig_dir, "figure1b_burden_vs_cancer_icu_volume.png"), p_trend_dual, width = 8.5, height = 5.5, dpi = 300)
+ggsave(file.path(fig_dir, "figure1b_burden_vs_cancer_icu_volume.pdf"), p_trend_dual, width = 8.5, height = 5.5)
 ggsave(file.path(fig_dir, "figure2_pollution_quartile_probable_rate.png"), p_quartile_phenotype, width = 8.5, height = 5.5, dpi = 300)
 ggsave(file.path(fig_dir, "figure2_pollution_quartile_probable_rate.pdf"), p_quartile_phenotype, width = 8.5, height = 5.5)
 ggsave(file.path(fig_dir, "figure3_pollution_quartile_mortality_probable.png"), p_quartile_mortality, width = 8.5, height = 5.5, dpi = 300)
