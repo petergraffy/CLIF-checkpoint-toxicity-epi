@@ -252,8 +252,23 @@ pm25_yll_quartiles <- probable_dat %>%
   arrange(pm25_q) %>%
   mutate(
     baseline_yll_per_case_q1 = mean_yll_per_case[pm25_q == "Q1 lowest"][1],
+    baseline_total_yll_q1_rate = baseline_yll_per_case_q1 * n_probable_cases,
     excess_yll_per_case_vs_q1 = mean_yll_per_case - baseline_yll_per_case_q1,
-    excess_total_yll_vs_q1 = excess_yll_per_case_vs_q1 * n_probable_cases
+    excess_total_yll_vs_q1 = excess_yll_per_case_vs_q1 * n_probable_cases,
+    excess_total_yll_vs_q1 = pmax(0, excess_total_yll_vs_q1),
+    observed_minus_excess = pmax(0, total_yll_observed - excess_total_yll_vs_q1)
+  )
+
+pm25_yll_decomposition <- pm25_yll_quartiles %>%
+  transmute(
+    pm25_q,
+    `Baseline YLL at Q1 rate` = baseline_total_yll_q1_rate,
+    `Excess YLL above Q1` = excess_total_yll_vs_q1
+  ) %>%
+  pivot_longer(
+    cols = c(`Baseline YLL at Q1 rate`, `Excess YLL above Q1`),
+    names_to = "component",
+    values_to = "yll"
   )
 
 pm25_mortality_probable_model <- NULL
@@ -533,14 +548,32 @@ p_pm25_yll_quartile <- pm25_yll_quartiles %>%
   ) +
   theme_grant()
 
-p_pm25_excess_yll_quartile <- pm25_yll_quartiles %>%
-  filter(pm25_q != "Q1 lowest") %>%
-  ggplot(aes(x = pm25_q, y = excess_total_yll_vs_q1, fill = pm25_q)) +
-  geom_col(width = 0.7, show.legend = FALSE) +
-  scale_fill_manual(values = c("Q2" = "#E9D8A6", "Q3" = "#EE9B00", "Q4 highest" = "#BB3E03")) +
+p_pm25_yll_stacked <- pm25_yll_decomposition %>%
+  ggplot(aes(x = pm25_q, y = yll, fill = component)) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(
+    values = c(
+      "Baseline YLL at Q1 rate" = "#94D2BD",
+      "Excess YLL above Q1" = "#BB3E03"
+    )
+  ) +
   labs(
-    title = "Excess observed YLL versus lowest PM2.5 quartile",
-    subtitle = "Difference in YLL per probable case relative to Q1, scaled by quartile case counts",
+    title = "Observed YLL decomposed into baseline and excess by PM2.5 quartile",
+    subtitle = "Baseline reflects the YLL rate in the lowest PM2.5 quartile among probable irAE cases",
+    x = "PM2.5 quartile",
+    y = "Total YLL",
+    fill = NULL
+  ) +
+  theme_grant()
+
+p_pm25_excess_yll_quartile <- pm25_yll_quartiles %>%
+  ggplot(aes(x = pm25_q, y = excess_total_yll_vs_q1, group = 1)) +
+  geom_hline(yintercept = 0, color = "gray70", linewidth = 0.5) +
+  geom_segment(aes(xend = pm25_q, y = 0, yend = excess_total_yll_vs_q1), color = "#BB3E03", linewidth = 1.1) +
+  geom_point(size = 3.2, color = "#BB3E03") +
+  labs(
+    title = "Excess YLL above the lowest PM2.5 quartile",
+    subtitle = "Lollipop view of quartile-specific excess YLL among probable irAE cases",
     x = "PM2.5 quartile",
     y = "Excess YLL vs Q1"
   ) +
@@ -568,6 +601,7 @@ write_csv(yearly_burden, file.path(out_dir, "yearly_burden_probable.csv"))
 write_csv(quartile_phenotype, file.path(out_dir, "quartile_phenotype_rates.csv"))
 write_csv(quartile_mortality_probable, file.path(out_dir, "quartile_mortality_probable.csv"))
 write_csv(pm25_yll_quartiles, file.path(out_dir, "pm25_yll_quartiles_probable.csv"))
+write_csv(pm25_yll_decomposition, file.path(out_dir, "pm25_yll_decomposition_probable.csv"))
 
 if (nrow(pm25_attributable_yll_patient) > 0) {
   write_csv(pm25_attributable_yll_patient, file.path(out_dir, "pm25_attributable_yll_patient_level.csv"))
@@ -585,8 +619,10 @@ ggsave(file.path(fig_dir, "figure3_pollution_quartile_mortality_probable.png"), 
 ggsave(file.path(fig_dir, "figure3_pollution_quartile_mortality_probable.pdf"), p_quartile_mortality, width = 8.5, height = 5.5)
 ggsave(file.path(fig_dir, "figure5_pm25_observed_yll_quartiles.png"), p_pm25_yll_quartile, width = 8.5, height = 5.5, dpi = 300)
 ggsave(file.path(fig_dir, "figure5_pm25_observed_yll_quartiles.pdf"), p_pm25_yll_quartile, width = 8.5, height = 5.5)
-ggsave(file.path(fig_dir, "figure6_pm25_excess_yll_vs_q1.png"), p_pm25_excess_yll_quartile, width = 8.5, height = 5.5, dpi = 300)
-ggsave(file.path(fig_dir, "figure6_pm25_excess_yll_vs_q1.pdf"), p_pm25_excess_yll_quartile, width = 8.5, height = 5.5)
+ggsave(file.path(fig_dir, "figure6_pm25_yll_baseline_plus_excess_stacked.png"), p_pm25_yll_stacked, width = 8.5, height = 5.5, dpi = 300)
+ggsave(file.path(fig_dir, "figure6_pm25_yll_baseline_plus_excess_stacked.pdf"), p_pm25_yll_stacked, width = 8.5, height = 5.5)
+ggsave(file.path(fig_dir, "figure6b_pm25_excess_yll_lollipop.png"), p_pm25_excess_yll_quartile, width = 8.5, height = 5.5, dpi = 300)
+ggsave(file.path(fig_dir, "figure6b_pm25_excess_yll_lollipop.pdf"), p_pm25_excess_yll_quartile, width = 8.5, height = 5.5)
 
 if (exists("p_forest")) {
   ggsave(file.path(fig_dir, "figure4_air_pollution_forest.png"), p_forest, width = 8.5, height = 4.8, dpi = 300)
