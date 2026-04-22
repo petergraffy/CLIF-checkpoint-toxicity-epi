@@ -376,7 +376,7 @@ trend_lines <- bind_rows(
   yearly_burden %>%
     transmute(
       icu_year,
-      series = "Probable irAE burden",
+      series = "ICI irAE burden",
       value = rate
     ),
   yearly_burden %>%
@@ -448,8 +448,8 @@ quartile_mortality_probable <- bind_rows(
 forest_dat <- model_results %>%
   mutate(
     label = case_when(
-      outcome == "probable_checkpoint_irae_icu" & exposure == "pm25_annual" ~ "Probable irAE phenotype per 1-unit PM2.5",
-      outcome == "probable_checkpoint_irae_icu" & exposure == "no2_annual" ~ "Probable irAE phenotype per 1-unit NO2",
+      outcome == "probable_checkpoint_irae_icu" & exposure == "pm25_annual" ~ "ICI irAE burden per 1-unit PM2.5",
+      outcome == "probable_checkpoint_irae_icu" & exposure == "no2_annual" ~ "ICI irAE burden per 1-unit NO2",
       outcome == "hospital_mortality" & exposure == "pm25_annual" ~ "Hospital mortality per 1-unit PM2.5",
       outcome == "any_major_support" & exposure == "no2_annual" ~ "Major organ support per 1-unit NO2",
       TRUE ~ paste(outcome, exposure)
@@ -475,25 +475,26 @@ p_yearly <- yearly_burden %>%
   scale_y_continuous(labels = label_percent(accuracy = 0.1)) +
   scale_x_continuous(breaks = yearly_burden$icu_year) +
   labs(
-    title = "Annual burden of probable irAE-like ICU phenotype",
+    title = "Annual burden of ICI irAE-like ICU phenotype",
     subtitle = "Among all cancer ICU admissions",
     x = "ICU year",
-    y = "Probable phenotype rate"
+    y = "ICI irAE burden"
   ) +
   theme_grant()
 
 p_trend_dual <- trend_lines %>%
   ggplot(aes(x = icu_year, y = value, color = series)) +
-  geom_line(linewidth = 1.2) +
-  geom_point(size = 2.3) +
+  geom_line(linewidth = 1.4) +
+  geom_point(size = 2.8) +
   scale_color_manual(
     values = c(
-      "Probable irAE burden" = "#AE2012",
+      "ICI irAE burden" = "#AE2012",
       "Cancer ICU volume" = "#005F73"
-    )
+    ),
+    name = NULL
   ) +
   scale_y_continuous(
-    name = "Probable irAE burden",
+    name = "ICI irAE burden",
     labels = label_percent(accuracy = 0.1),
     sec.axis = sec_axis(
       ~ . * line_scale_factor,
@@ -502,12 +503,21 @@ p_trend_dual <- trend_lines %>%
   ) +
   scale_x_continuous(breaks = yearly_burden$icu_year) +
   labs(
-    title = "Probable irAE burden versus total cancer ICU volume",
-    subtitle = "Annual trends limited to ICU admissions through 2024",
-    x = "ICU year",
-    color = NULL
+    title = "ICI irAE burden\nversus total cancer intensive care unit volume",
+    x = "Year"
   ) +
-  theme_grant()
+  theme_classic(base_size = 16) +
+  theme(
+    plot.title = element_text(face = "bold", size = 17, lineheight = 1.0, margin = margin(b = 12)),
+    axis.title = element_text(face = "bold", size = 16, color = "black"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    axis.ticks.length = unit(0.18, "cm"),
+    legend.position = "top",
+    legend.text = element_text(size = 14),
+    legend.key.width = unit(1.2, "cm")
+  )
 
 p_quartile_phenotype <- quartile_phenotype %>%
   ggplot(aes(x = exposure_group, y = rate, fill = pollutant)) +
@@ -520,10 +530,10 @@ p_quartile_phenotype <- quartile_phenotype %>%
   scale_y_continuous(labels = label_percent(accuracy = 0.1)) +
   scale_fill_manual(values = c("PM2.5" = "#CA6702", "NO2" = "#BB3E03")) +
   labs(
-    title = "Probable irAE-like phenotype rate by pollution quartile",
+    title = "ICI irAE burden by pollution quartile",
     subtitle = "Higher quartiles represent higher county-level annual exposure",
     x = "Exposure quartile",
-    y = "Probable phenotype rate",
+    y = "ICI irAE burden",
     fill = NULL
   ) +
   theme_grant()
@@ -537,15 +547,28 @@ p_quartile_mortality <- quartile_mortality_probable %>%
     width = 0.16
   ) +
   scale_y_continuous(labels = label_percent(accuracy = 0.1)) +
-  scale_fill_manual(values = c("PM2.5" = "#0A9396", "NO2" = "#005F73")) +
+  scale_fill_manual(
+    values = c("PM2.5" = "#0A9396", "NO2" = "#005F73"),
+    labels = c("PM2.5" = expression(PM[2.5]), "NO2" = expression(NO[2]))
+  ) +
   labs(
-    title = "Hospital mortality among probable irAE cases by pollution quartile",
-    subtitle = "Exploratory unadjusted rates within the probable phenotype",
+    title = "Hospital mortality among ICI irAE cases\nby pollution quartile",
     x = "Exposure quartile",
     y = "Hospital mortality",
     fill = NULL
   ) +
-  theme_grant()
+  theme_classic(base_size = 16) +
+  theme(
+    plot.title = element_text(face = "bold", size = 17, lineheight = 1.0, margin = margin(b = 12)),
+    axis.title = element_text(face = "bold", size = 16, color = "black"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    axis.ticks.length = unit(0.18, "cm"),
+    legend.position = "top",
+    legend.text = element_text(size = 14),
+    legend.key.width = unit(1.2, "cm")
+  )
 
 if (nrow(forest_dat) > 0) {
   p_forest <- forest_dat %>%
@@ -608,33 +631,46 @@ p_pm25_excess_yll_quartile <- pm25_yll_quartiles %>%
 
 p_pm25_yll_yearly <- pm25_yll_yearly_plot_dat %>%
   ggplot(aes(x = icu_year)) +
-  geom_line(aes(y = baseline_yll), color = "#005F73", linewidth = 1.2) +
-  geom_point(aes(y = baseline_yll), color = "#005F73", size = 2.2) +
+  geom_line(aes(y = baseline_yll, color = "Baseline years of life lost"), linewidth = 1.4) +
+  geom_point(aes(y = baseline_yll, color = "Baseline years of life lost"), size = 2.8) +
   geom_segment(
     aes(
       xend = icu_year,
       y = baseline_yll,
-      yend = baseline_yll + attributable_excess_yll
+      yend = baseline_yll + attributable_excess_yll,
+      color = "Excess years of life lost"
     ),
-    color = "#AE2012",
-    linewidth = 1.1
+    linewidth = 1.2
   ) +
   geom_point(
-    aes(y = baseline_yll + attributable_excess_yll),
-    color = "#AE2012",
-    size = 2.8
+    aes(y = baseline_yll + attributable_excess_yll, color = "Excess years of life lost"),
+    size = 3.2
   ) +
   scale_x_continuous(breaks = pm25_yll_yearly_plot_dat$icu_year) +
-  labs(
-    title = "Annual baseline and excess YLL associated with PM2.5",
-    subtitle = paste0(
-      "Blue line: baseline YLL at the Q1 PM2.5 rate; red lollipops: estimated PM2.5-attributable excess YLL",
-      if (exists("pm25_reference") && is.finite(pm25_reference)) paste0(" (Q1 median reference = ", round(pm25_reference, 2), ")") else ""
+  scale_color_manual(
+    values = c(
+      "Baseline years of life lost" = "#005F73",
+      "Excess years of life lost" = "#AE2012"
     ),
-    x = "ICU year",
+    name = NULL
+  ) +
+  labs(
+    title = expression("Annual baseline and excess years of life lost\nassociated with " * PM[2.5]),
+    x = "Year",
     y = "Years of life lost"
   ) +
-  theme_grant()
+  theme_classic(base_size = 16) +
+  theme(
+    plot.title = element_text(face = "bold", size = 17, lineheight = 1.0, margin = margin(b = 12)),
+    axis.title = element_text(face = "bold", size = 16, color = "black"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    axis.ticks.length = unit(0.18, "cm"),
+    legend.position = "top",
+    legend.text = element_text(size = 14),
+    legend.key.width = unit(1.2, "cm")
+  )
 
 write_csv(analysis_exposome, file.path(out_dir, "analysis_exposome_linked.csv"))
 write_csv(linkage_qc, file.path(out_dir, "linkage_qc.csv"))
