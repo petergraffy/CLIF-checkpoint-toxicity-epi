@@ -73,6 +73,23 @@ safe_read_csv_required <- function(path) {
   if (!file.exists(path)) {
     stop("Required input file not found: ", path)
   }
+  
+  con <- file(path, "rb")
+  on.exit(close(con), add = TRUE)
+  raw_head <- readBin(con, what = "raw", n = 4000)
+  
+  is_utf16le_bom <- length(raw_head) >= 2 && identical(as.integer(raw_head[1:2]), c(255L, 254L))
+  is_utf16be_bom <- length(raw_head) >= 2 && identical(as.integer(raw_head[1:2]), c(254L, 255L))
+  has_embedded_nul <- any(raw_head == as.raw(0))
+  
+  if (is_utf16le_bom || has_embedded_nul) {
+    return(readr::read_csv(path, locale = readr::locale(encoding = "UTF-16LE"), show_col_types = FALSE))
+  }
+  
+  if (is_utf16be_bom) {
+    return(readr::read_csv(path, locale = readr::locale(encoding = "UTF-16BE"), show_col_types = FALSE))
+  }
+  
   readr::read_csv(path, show_col_types = FALSE)
 }
 
