@@ -355,14 +355,14 @@ prepare_llm_queue <- function(note_df, encounter_df, max_handp = 2, max_radiolog
         (note_source == "radiology" & note_rank_within_source <= max_radiology)
     ) %>%
     select(any_of(c(
-      MRN, HAR, note_source, NOTE_ID, NOTE_CSN_ID, note_datetime,
-      NOTE_TYPE, PROC_NAME, AUTHOR_SERV, rule_score, llm_priority_note,
-      encounter_rule_label,
-      snippet_ici_agent, snippet_ici_general,
-      snippet_irae_general, snippet_irae_pneumonitis, snippet_irae_myocarditis,
-      snippet_competing_infection, snippet_competing_progression,
-      snippet_radiology_supportive_pneumonitis,
-      NOTE_TEXT
+      "MRN", "HAR", "note_source", "NOTE_ID", "NOTE_CSN_ID", "note_datetime",
+      "NOTE_TYPE", "PROC_NAME", "AUTHOR_SERV", "rule_score", "llm_priority_note",
+      "encounter_rule_label",
+      "snippet_ici_agent", "snippet_ici_general",
+      "snippet_irae_general", "snippet_irae_pneumonitis", "snippet_irae_myocarditis",
+      "snippet_competing_infection", "snippet_competing_progression",
+      "snippet_radiology_supportive_pneumonitis",
+      "NOTE_TEXT"
     )))
 }
 
