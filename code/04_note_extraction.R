@@ -93,6 +93,21 @@ safe_read_csv_required <- function(path) {
   readr::read_csv(path, show_col_types = FALSE)
 }
 
+sanitize_character_encoding <- function(x) {
+  x <- as.character(x)
+  out <- iconv(x, from = "", to = "UTF-8", sub = " ")
+  fallback <- is.na(out) & !is.na(x)
+
+  if (any(fallback)) {
+    out[fallback] <- tryCatch(
+      iconv(x[fallback], from = "CP1252", to = "UTF-8", sub = " "),
+      error = function(e) iconv(x[fallback], from = "latin1", to = "UTF-8", sub = " ")
+    )
+  }
+
+  out
+}
+
 normalize_source_columns <- function(df) {
   id_cols <- c(
     "MRN", "HAR", "NOTE_ID", "NOTE_CSN_ID", "PAT_ID", "CSN",
@@ -102,13 +117,18 @@ normalize_source_columns <- function(df) {
     "CONTACT_DATE", "NOTE_DTTM", "FINALIZING_DTTM", "SERVICE_DTTM",
     "CREATE_DTTM", "UPDATE_DTTM", "RESULT_TIME", "ORDER_TIME"
   )
+  text_cols <- c("NOTE_TEXT", "PROC_NAME", "NOTE_TYPE", "AUTHOR_SERV")
+  character_cols <- names(df)[vapply(df, is.character, logical(1))]
 
   df %>%
-    mutate(across(any_of(c(id_cols, temporal_cols)), as.character))
+    mutate(
+      across(any_of(character_cols), sanitize_character_encoding),
+      across(any_of(c(id_cols, temporal_cols, text_cols)), sanitize_character_encoding)
+    )
 }
 
 normalize_text <- function(x) {
-  x %>%
+  sanitize_character_encoding(x) %>%
     replace_na("") %>%
     str_replace_all("[\r\n\t]+", " ") %>%
     str_squish() %>%
@@ -143,6 +163,7 @@ first_nonmissing <- function(x) {
 }
 
 extract_snippet <- function(text, pattern, window = 90) {
+  text <- sanitize_character_encoding(text)
   if (is.na(text) || identical(text, "")) {
     return(NA_character_)
   }
