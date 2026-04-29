@@ -93,6 +93,16 @@ safe_read_csv_required <- function(path) {
   readr::read_csv(path, show_col_types = FALSE)
 }
 
+normalize_identifier_columns <- function(df) {
+  id_cols <- c(
+    "MRN", "HAR", "NOTE_ID", "NOTE_CSN_ID", "PAT_ID", "CSN",
+    "ORDER_ID", "ACCESSION_NUM", "ACCESSION_NUMBER"
+  )
+
+  df %>%
+    mutate(across(any_of(id_cols), as.character))
+}
+
 normalize_text <- function(x) {
   x %>%
     replace_na("") %>%
@@ -347,7 +357,8 @@ if (!file.exists(handp_file) && !file.exists(radiology_file)) {
 note_tables <- list()
 
 if (file.exists(handp_file)) {
-  handp_raw <- safe_read_csv_required(handp_file)
+  handp_raw <- safe_read_csv_required(handp_file) %>%
+    normalize_identifier_columns()
   required_handp <- c("MRN", "HAR", "NOTE_ID", "NOTE_TEXT")
   missing_handp <- setdiff(required_handp, names(handp_raw))
   if (length(missing_handp) > 0) {
@@ -360,7 +371,8 @@ if (file.exists(handp_file)) {
 }
 
 if (file.exists(radiology_file)) {
-  radiology_raw <- safe_read_csv_required(radiology_file)
+  radiology_raw <- safe_read_csv_required(radiology_file) %>%
+    normalize_identifier_columns()
   required_img <- c("MRN", "HAR", "NOTE_ID", "NOTE_TEXT", "PROC_NAME")
   missing_img <- setdiff(required_img, names(radiology_raw))
   if (length(missing_img) > 0) {
