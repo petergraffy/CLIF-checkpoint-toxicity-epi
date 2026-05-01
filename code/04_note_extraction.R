@@ -366,6 +366,29 @@ prepare_llm_queue <- function(note_df, encounter_df, max_handp = 2, max_radiolog
     )))
 }
 
+prepare_priority_note_exports <- function(note_df, encounter_df) {
+  encounter_priority <- encounter_df %>%
+    filter(encounter_rule_label %in% c(
+      "high_priority_ici_irae_review",
+      "moderate_priority_possible_ici_irae"
+    )) %>%
+    select(MRN, HAR, encounter_rule_label, encounter_llm_priority)
+
+  notes_in_priority_encounters <- note_df %>%
+    inner_join(encounter_priority, by = c("MRN", "HAR")) %>%
+    arrange(MRN, HAR, desc(rule_score), note_datetime)
+
+  priority_notes_only <- notes_in_priority_encounters %>%
+    filter(llm_priority_note == 1) %>%
+    arrange(MRN, HAR, desc(rule_score), note_datetime)
+
+  list(
+    encounters = encounter_priority,
+    all_notes = notes_in_priority_encounters,
+    priority_notes_only = priority_notes_only
+  )
+}
+
 dictionary <- safe_read_csv_required(dictionary_file)
 
 message("Looking for H&P notes at: ", handp_file)
@@ -424,6 +447,11 @@ write_csv(encounter_level, file.path(out_dir, "encounter_level_rule_labels.csv")
 llm_queue <- prepare_llm_queue(all_note_level, encounter_level)
 write_csv(llm_queue, file.path(out_dir, "llm_review_queue.csv"))
 
+priority_exports <- prepare_priority_note_exports(all_note_level, encounter_level)
+write_csv(priority_exports$encounters, file.path(out_dir, "encounter_level_high_moderate_only.csv"))
+write_csv(priority_exports$all_notes, file.path(out_dir, "all_notes_high_moderate_encounters.csv"))
+write_csv(priority_exports$priority_notes_only, file.path(out_dir, "high_moderate_priority_notes_only.csv"))
+
 summary_tbl <- tibble(
   n_notes_total = nrow(all_note_level),
   n_handp_notes = sum(all_note_level$note_source == "handp"),
@@ -431,7 +459,10 @@ summary_tbl <- tibble(
   n_encounters = nrow(encounter_level),
   n_high_priority = sum(encounter_level$encounter_rule_label == "high_priority_ici_irae_review"),
   n_moderate_priority = sum(encounter_level$encounter_rule_label == "moderate_priority_possible_ici_irae"),
-  n_llm_queue_notes = nrow(llm_queue)
+  n_llm_queue_notes = nrow(llm_queue),
+  n_high_moderate_encounters = nrow(priority_exports$encounters),
+  n_notes_in_high_moderate_encounters = nrow(priority_exports$all_notes),
+  n_high_moderate_priority_notes_only = nrow(priority_exports$priority_notes_only)
 )
 
 write_csv(summary_tbl, file.path(out_dir, "extraction_summary.csv"))
