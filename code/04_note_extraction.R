@@ -47,6 +47,14 @@ out_dir <- get_config_value(
   default = file.path(project_root, "output", "note_extraction")
 )
 
+analysis_dir <- get_config_value(
+  config,
+  "analysis_dir",
+  default = file.path(project_root, "output", "checkpoint_irae_icu_epi")
+)
+
+analysis_path <- file.path(analysis_dir, "analysis_dataset.csv")
+
 notes_dir <- file.path(project_root, "notes")
 dir.create(notes_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -145,6 +153,54 @@ parse_flexible_datetime <- function(x) {
     ),
     tz = "America/Chicago"
   ))
+}
+
+load_encounter_windows <- function(path) {
+  if (!file.exists(path)) {
+    warning(
+      "analysis_dataset.csv not found at ", path, ". ",
+      "Skipping ICU-window filtering and using all notes."
+    )
+    return(NULL)
+  }
+
+  analysis_dat <- safe_read_csv_required(path) %>%
+    normalize_source_columns()
+
+  required_cols <- c(
+    "hospitalization_id", "admission_dttm", "discharge_dttm",
+    "first_icu_in", "last_icu_out"
+  )
+  missing_cols <- setdiff(required_cols, names(analysis_dat))
+  if (length(missing_cols) > 0) {
+    warning(
+      "analysis_dataset.csv is missing required columns: ",
+      paste(missing_cols, collapse = ", "),
+      ". Skipping ICU-window filtering and using all notes."
+    )
+    return(NULL)
+  }
+
+  analysis_dat %>%
+    mutate(
+      hospitalization_id = as.character(hospitalization_id),
+      patient_id = as.character(patient_id),
+      admission_dttm = parse_flexible_datetime(admission_dttm),
+      discharge_dttm = parse_flexible_datetime(discharge_dttm),
+      first_icu_in = parse_flexible_datetime(first_icu_in),
+      last_icu_out = parse_flexible_datetime(last_icu_out)
+    ) %>%
+    filter(!is.na(hospitalization_id), !is.na(first_icu_in), !is.na(discharge_dttm)) %>%
+    transmute(
+      HAR = hospitalization_id,
+      icu_window_start = first_icu_in - years(1),
+      icu_window_end = discharge_dttm,
+      admission_dttm,
+      discharge_dttm,
+      first_icu_in,
+      last_icu_out
+    ) %>%
+    distinct(HAR, .keep_all = TRUE)
 }
 
 column_or_na <- function(df, col_name) {
@@ -389,7 +445,23 @@ prepare_priority_note_exports <- function(note_df, encounter_df) {
   )
 }
 
+apply_icu_window_filter <- function(note_df, encounter_windows) {
+  if (is.null(encounter_windows)) {
+    return(note_df)
+  }
+
+  note_df %>%
+    mutate(HAR = as.character(HAR)) %>%
+    inner_join(encounter_windows, by = "HAR") %>%
+    filter(
+      !is.na(note_datetime),
+      note_datetime >= icu_window_start,
+      note_datetime <= icu_window_end
+    )
+}
+
 dictionary <- safe_read_csv_required(dictionary_file)
+encounter_windows <- load_encounter_windows(analysis_path)
 
 message("Looking for H&P notes at: ", handp_file)
 message("Looking for radiology reports at: ", radiology_file)
@@ -439,6 +511,16 @@ if (file.exists(radiology_file)) {
 
 all_note_level <- bind_rows(note_tables) %>%
   ensure_dictionary_columns(dict = dictionary)
+
+all_note_level <- apply_icu_window_filter(all_note_level, encounter_windows)
+
+if (nrow(all_note_level) == 0) {
+  stop(
+    "No notes remained after filtering to one year before ICU admission through discharge. ",
+    "Check that HAR matches hospitalization_id and that note timestamps are populated."
+  )
+}
+
 write_csv(all_note_level, file.path(out_dir, "all_note_level_rules.csv"))
 
 encounter_level <- aggregate_encounter_level(all_note_level)
