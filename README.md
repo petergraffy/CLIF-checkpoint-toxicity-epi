@@ -260,33 +260,150 @@ Expected output files include:
 
 The final project results should be saved in the `output/final` directory if adapted into a production CLIF project structure.
 
-## Detailed Instructions for running the project
+## Detailed Instructions for Running the Project
 
-## 1. Update `config/config.json`
+### 1. Clone the repo and create `config/config.json`
 
-Follow instructions in the [config/README.md](config/README.md) file for detailed configuration steps.
+Follow [config/README.md](config/README.md) and create `config/config.json`.
 
-## 2. Set up the project environment
+At minimum, most sites will need:
 
-For R:
-Run `00_renv_restore.R` in the [code](code/templates/R) directory to set up the project environment.
+```json
+{
+  "site_name": "SITE",
+  "clif_dir": "/path/to/clif-2.1.0",
+  "output_dir": "/path/to/repo/output/checkpoint_irae_icu",
+  "analysis_dir": "/path/to/repo/output/checkpoint_irae_icu_epi",
+  "ollama_model": "qwen3:235b",
+  "ollama_temperature": 0
+}
+```
 
-Typical package requirements for this project include:
+### 2. Install the required R packages
+
+Typical package requirements for this project are:
+
 - `tidyverse`
 - `lubridate`
 - `arrow`
 - `readr`
 - `stringr`
+- `broom`
+- `jsonlite`
 
-## 3. Run code
+If you are using `renv`, restore the environment from your site-specific setup. If not, install packages directly in R:
 
-Detailed instructions on the code workflow are provided in the [code directory](code/README.md)
+```r
+install.packages(c(
+  "tidyverse",
+  "lubridate",
+  "arrow",
+  "readr",
+  "stringr",
+  "broom",
+  "jsonlite"
+))
+```
 
-A typical workflow for this project is:
-1. Load CLIF parquet files
-2. Derive ICU timing from `adt`
-3. Derive POA cancer cohort from `hospital_diagnosis`
-4. Generate support/treatment/lab/vital features around ICU entry
-5. Construct organ-specific irAE-like modules
-6. Create final possible/probable/high-confidence phenotype tiers
-7. Export cohort tables and summary counts
+### 3. Install Ollama explicitly
+
+The LLM review stage uses a local Ollama runtime.
+
+#### macOS
+
+Install Ollama with Homebrew:
+
+```bash
+brew install ollama
+```
+
+Or install the desktop app from the official site:
+
+- [Ollama downloads](https://ollama.com/download)
+
+After installation, verify that Ollama is available:
+
+```bash
+ollama --version
+```
+
+Start the Ollama service if needed:
+
+```bash
+ollama serve
+```
+
+In a second terminal, pull the default review model:
+
+```bash
+ollama pull qwen3:235b
+```
+
+If you prefer to use the local API rather than the CLI, the scripts will also work against the default Ollama host:
+
+- `http://127.0.0.1:11434`
+
+### 4. Place note files in the repo
+
+For the note workflow, place exported note files here:
+
+- `notes/HP_NOTES.csv`
+- `notes/RAD_NOTES.csv`
+
+The note extraction scripts assume those exact filenames unless you override them in `config/config.json`.
+
+### 5. Run the pipeline in order
+
+The pipeline is now designed to run stepwise from saved outputs.
+
+```r
+source("code/01_cohort.R")
+source("code/02_analysis.R")
+source("code/03_air_pollution_analysis.R")
+source("code/04_note_extraction.R")
+source("code/05_llm_review_prep.R")
+source("code/06_ollama_llm_review.R")
+```
+
+### 6. What each step produces
+
+`code/01_cohort.R`
+- writes:
+  - `output/checkpoint_irae_icu/01_cancer_icu_broad.csv`
+  - `output/checkpoint_irae_icu/02_cancer_icu_irae_features.csv`
+  - `output/checkpoint_irae_icu/03_cancer_icu_checkpoint_suspected.csv`
+  - `output/checkpoint_irae_icu/summary_counts.csv`
+
+`code/02_analysis.R`
+- reads the saved cohort outputs from `01`
+- writes:
+  - `output/checkpoint_irae_icu_epi/analysis_dataset.csv`
+  - denominator and QC tables
+
+`code/03_air_pollution_analysis.R`
+- reads `analysis_dataset.csv`
+- links county-level pollution files
+- writes analytical tables and figures
+
+`code/04_note_extraction.R`
+- reads `notes/HP_NOTES.csv` and `notes/RAD_NOTES.csv`
+- writes note-level, encounter-level, and LLM queue files to `output/note_extraction/`
+
+`code/05_llm_review_prep.R`
+- builds H&P-centered encounter packets for LLM review
+- writes prompt-ready files to `output/note_extraction/llm_review/`
+
+`code/06_ollama_llm_review.R`
+- runs local Ollama review over the H&P encounter packets
+- writes:
+  - `ollama_handp_raw_responses.csv`
+  - `ollama_handp_parsed_outputs.csv`
+  - `ollama_handp_review_merged.csv`
+  - `ollama_handp_review_summary.csv`
+
+### 7. Practical notes for federated sites
+
+- Sites do not need to run the air pollution step to run the note extraction and LLM review steps.
+- Sites do need `analysis_dataset.csv` for the note time-window alignment in `code/04_note_extraction.R`.
+- If a site wants to use a different Ollama model, set `ollama_model` in `config/config.json`.
+- The recommended default for one-shot extraction is `qwen3:235b` with `ollama_temperature = 0`.

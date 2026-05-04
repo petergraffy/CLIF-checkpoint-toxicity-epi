@@ -14,7 +14,36 @@ suppressPackageStartupMessages({
   library(broom)
 })
 
-source("utils/config.R")
+find_first_existing <- function(paths) {
+  existing <- paths[file.exists(paths)]
+  if (length(existing) == 0) {
+    return(NA_character_)
+  }
+  normalizePath(existing[[1]], winslash = "/", mustWork = TRUE)
+}
+
+config_script_path <- find_first_existing(c(
+  "utils/config.R",
+  "../utils/config.R"
+))
+
+if (is.na(config_script_path)) {
+  stop("Could not find utils/config.R from the current working directory.")
+}
+
+source(config_script_path)
+
+config_path <- find_first_existing(c(
+  "config/config.json",
+  "../config/config.json"
+))
+
+if (is.na(config_path)) {
+  stop("Could not find config/config.json from the current working directory.")
+}
+
+project_root <- dirname(dirname(config_path))
+config <- load_config(config_path, required = TRUE)
 
 `%ni%` <- Negate(`%in%`)
 
@@ -160,8 +189,16 @@ suppressPackageStartupMessages({
 # -----------------------------
 # paths
 # -----------------------------
-phenotype_dir <- get_config_value(config, "output_dir", default = "output/checkpoint_irae_icu")
-out_dir <- get_config_value(config, "analysis_dir", default = "output/checkpoint_irae_icu_epi")
+phenotype_dir <- get_config_value(
+  config,
+  "output_dir",
+  default = file.path(project_root, "output", "checkpoint_irae_icu")
+)
+out_dir <- get_config_value(
+  config,
+  "analysis_dir",
+  default = file.path(project_root, "output", "checkpoint_irae_icu_epi")
+)
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 site_name <- get_config_value(config, "site_name", default = "SITE")
@@ -169,8 +206,29 @@ site_name <- get_config_value(config, "site_name", default = "SITE")
 # -----------------------------
 # read phenotype outputs
 # -----------------------------
-broad <- cancer_icu_broad
-irae  <- irae_features
+broad_path <- file.path(phenotype_dir, "01_cancer_icu_broad.csv")
+irae_path <- file.path(phenotype_dir, "02_cancer_icu_irae_features.csv")
+
+safe_read_csv_required <- function(path) {
+  if (!file.exists(path)) {
+    stop("Required input file not found: ", path)
+  }
+  readr::read_csv(path, show_col_types = FALSE)
+}
+
+if (exists("irae_features", inherits = TRUE)) {
+  irae <- get("irae_features", inherits = TRUE)
+} else {
+  irae <- safe_read_csv_required(irae_path)
+}
+
+if (exists("cancer_icu_broad", inherits = TRUE)) {
+  broad <- get("cancer_icu_broad", inherits = TRUE)
+} else if (file.exists(broad_path)) {
+  broad <- safe_read_csv_required(broad_path)
+} else {
+  broad <- NULL
+}
 
 # -----------------------------
 # basic cleaning
@@ -767,7 +825,6 @@ if (nrow(yll_dat) > 0) {
   
   ggsave(file.path(out_dir, "yll_distribution.png"), p2, width = 7, height = 5, dpi = 300)
 }
-
 
 
 

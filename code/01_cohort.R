@@ -289,7 +289,7 @@ cancer_icu_broad <- hosp %>%
   inner_join(poa_cancer, by = "hospitalization_id") %>%
   filter(age_at_admission >= 18)
 
-#write_csv(cancer_icu_broad, file.path(out_dir, "01_cancer_icu_broad.csv"))
+write_csv(cancer_icu_broad, file.path(out_dir, "01_cancer_icu_broad.csv"))
 
 # ============================================================
 # 5) Respiratory support features
@@ -683,15 +683,15 @@ irae_features <- cancer_icu_broad %>%
     )
   )
 
-#write_csv(irae_features, file.path(out_dir, "02_cancer_icu_irae_features.csv"))
+write_csv(irae_features, file.path(out_dir, "02_cancer_icu_irae_features.csv"))
 
 checkpoint_suspected <- irae_features %>%
   filter(possible_checkpoint_irae_icu == 1)
 
-# write_csv(
-#   checkpoint_suspected,
-#   file.path(out_dir, "03_cancer_icu_checkpoint_suspected.csv")
-# )
+write_csv(
+  checkpoint_suspected,
+  file.path(out_dir, "03_cancer_icu_checkpoint_suspected.csv")
+)
 
 # ============================================================
 # 12) Summary
@@ -710,8 +710,7 @@ summary_counts <- tibble(
 
 print(summary_counts)
 
-#write_csv(summary_counts, file.path(out_dir, "summary_counts.csv"))
-
+write_csv(summary_counts, file.path(out_dir, "summary_counts.csv"))
 
 
 
